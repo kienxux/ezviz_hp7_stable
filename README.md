@@ -1,3 +1,5 @@
+**Installing the stable-terminal fork with HACS? See [INSTALL_THIS_FORK.md](INSTALL_THIS_FORK.md).**
+
 <h1 align="center">Home Assistant Integration for EZVIZ HP7 / CP7 Intercom</h1>
 
 <p align="center">
