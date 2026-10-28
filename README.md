@@ -41,6 +41,11 @@ EZVIZ app → User → Login settings → Manage terminals
 
 Remove unused devices to free at least one slot.
 
+**The integration now keeps one stable terminal.** Older versions derived the terminal ID (`featureCode`) from the MAC address of the machine. In Docker the container MAC changes with its IP, so every restart or recreate could register a *new* terminal until the limit was hit. The ID is now generated once and stored in `<config>/.storage/ezviz_hp7_feature_code` (included in Home Assistant backups). Existing installs keep the ID they already use, so updating does not add a terminal.
+
+- Delete that file only if you *want* a new terminal ID (a new terminal will be registered once).
+- Advanced: set the environment variable `EZVIZ_HP7_FEATURE_CODE` (32 hex characters) to force a specific ID, e.g. when moving to another machine and keeping the same terminal.
+
 **Running the official EZVIZ integration (or another fork) at the same time counts against that limit** and the two compete for the same account session, which shows up as random login failures or entities dropping out. Users hitting this have had best results removing the other integration, restarting Home Assistant, then adding this one ([#35](https://github.com/Bobsilvio/ezviz_hp7/issues/35)).
 
 ---

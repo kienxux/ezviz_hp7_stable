@@ -5,17 +5,158 @@ client, and a large collection of enums that map integers/strings from
 the Ezviz API to descriptive names.
 """
 
+from collections.abc import Mapping
 from enum import Enum, StrEnum, unique
 from hashlib import md5
+import json
+import logging
+import os
+from pathlib import Path
+import re
 import uuid
 
 
-def _generate_unique_code() -> str:
-    """Generate a deterministic unique code for this host."""
+FEATURE_CODE_FILENAME = "ezviz_hp7_feature_code"
+_FEATURE_CODE_RE = re.compile(r"[0-9a-f]{32}")
+_LOGGER = logging.getLogger(__name__)
 
+
+def _valid_code(value: object) -> str | None:
+    """Return ``value`` as a normalised 32-hex feature code, or ``None``."""
+
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    return value if _FEATURE_CODE_RE.fullmatch(value) else None
+
+
+def _ha_config_dir(module_file: Path) -> Path | None:
+    """Return the Home Assistant config dir if this file lives in the standard
+    ``<config>/custom_components/<domain>/pylocalapi/`` layout, else ``None``."""
+
+    try:
+        resolved = module_file.resolve()
+        if resolved.parents[2].name == "custom_components":
+            return resolved.parents[3]
+    except IndexError:
+        pass
+    return None
+
+
+def _read_code(path: Path) -> str | None:
+    try:
+        return _valid_code(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _write_code(path: Path, code: str) -> bool:
+    """Atomically write ``code`` to ``path``. Returns ``True`` on success."""
+
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(code + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+        return True
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
+
+
+def _adopt_existing_code(config_dir: Path) -> str | None:
+    """Reuse the code an existing install already registered with EZVIZ.
+
+    Older versions stored the ``feature_code`` they logged in with inside the
+    config entry. Adopting it on first start means upgrading users keep their
+    current EZVIZ "terminal" instead of registering a new one. Only that single
+    value is read; nothing else from the file is used or logged.
+    """
+
+    try:
+        raw = (config_dir / ".storage" / "core.config_entries").read_text(
+            encoding="utf-8"
+        )
+        entries = json.loads(raw)["data"]["entries"]
+        for entry in entries:
+            if entry.get("domain") != "ezviz_hp7":
+                continue
+            code = _valid_code(((entry.get("data") or {}).get("token") or {}).get("feature_code"))
+            if code:
+                return code
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return None
+
+
+def _resolve_feature_code(
+    module_file: Path | str = __file__,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    """Return the EZVIZ ``featureCode`` (terminal id) for this installation.
+
+    EZVIZ registers every distinct ``featureCode`` as a separate "terminal" of
+    the account and allows only 10. The original implementation hashed the MAC
+    address (``uuid.getnode()``). In a Docker bridge network that MAC is derived
+    from the container IP, so any restart/recreate that changed the IP produced
+    a new code and a new terminal (and ``uuid.getnode()`` returns a random number
+    when no MAC can be read). The code is therefore generated once and persisted.
+
+    Order of precedence:
+      1. ``EZVIZ_HP7_FEATURE_CODE`` environment variable (32 hex chars).
+      2. ``<config>/.storage/ezviz_hp7_feature_code`` (survives integration updates).
+      3. A hidden file inside the integration folder (fallback if 2 is unusable;
+         lost on integration updates).
+      4. First start only: the code stored in an existing config entry (upgrade
+         path), otherwise a new random code. It is persisted to 2 (or 3).
+      5. Last resort if nothing is writable: the legacy MAC based value.
+    """
+
+    env = os.environ if environ is None else environ
+    forced = _valid_code(env.get("EZVIZ_HP7_FEATURE_CODE"))
+    if forced:
+        return forced
+
+    module_file = Path(module_file)
+    config_dir = _ha_config_dir(module_file)
+    paths: list[Path] = []
+    if config_dir is not None:
+        paths.append(config_dir / ".storage" / FEATURE_CODE_FILENAME)
+    paths.append(module_file.resolve().parent / f".{FEATURE_CODE_FILENAME}")
+
+    for path in paths:
+        code = _read_code(path)
+        if code:
+            return code
+
+    code = (config_dir and _adopt_existing_code(config_dir)) or md5(
+        uuid.uuid4().hex.encode("utf-8")
+    ).hexdigest()
+    for path in paths:
+        if _write_code(path, code):
+            # Re-read so concurrent starters converge on what is on disk.
+            stored = _read_code(path) or code
+            _LOGGER.info(
+                "EZVIZ HP7: persisted feature code %s... in %s", stored[:6], path
+            )
+            return stored
+
+    _LOGGER.warning(
+        "EZVIZ HP7: cannot persist the feature code (no writable location); "
+        "falling back to the MAC based value, which may create new EZVIZ terminals"
+    )
     mac_int = uuid.getnode()
     mac_str = ":".join(f"{(mac_int >> i) & 0xFF:02x}" for i in range(40, -1, -8))
     return md5(mac_str.encode("utf-8")).hexdigest()
+
+
+def _generate_unique_code() -> str:
+    """Kept for backwards compatibility; see :func:`_resolve_feature_code`."""
+
+    return _resolve_feature_code()
 
 
 FEATURE_CODE = _generate_unique_code()

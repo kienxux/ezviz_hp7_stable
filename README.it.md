@@ -39,6 +39,11 @@ App EZVIZ → Utente → Impostazioni di accesso → Gestisci terminali
 
 Rimuovi i dispositivi inutilizzati per liberare almeno uno slot.
 
+**L'integrazione ora mantiene un unico terminale stabile.** Le versioni precedenti ricavavano l'ID del terminale (`featureCode`) dall'indirizzo MAC della macchina. In Docker il MAC del container cambia con il suo IP, quindi ogni riavvio o ricreazione poteva registrare un *nuovo* terminale fino al raggiungimento del limite. Ora l'ID viene generato una sola volta e salvato in `<config>/.storage/ezviz_hp7_feature_code` (incluso nei backup di Home Assistant). Le installazioni esistenti mantengono l'ID già in uso, quindi l'aggiornamento non aggiunge terminali.
+
+- Elimina quel file solo se *vuoi* un nuovo ID (verrà registrato un nuovo terminale una volta).
+- Avanzato: imposta la variabile d'ambiente `EZVIZ_HP7_FEATURE_CODE` (32 caratteri esadecimali) per forzare un ID specifico, ad esempio quando cambi macchina.
+
 **Tenere attiva anche l'integrazione EZVIZ ufficiale (o un altro fork) consuma lo stesso limite** e le due competono per la stessa sessione dell'account: il sintomo sono login che falliscono a caso o entità che spariscono. Chi ci è incappato ha risolto rimuovendo l'altra integrazione, riavviando Home Assistant e installando poi questa ([#35](https://github.com/Bobsilvio/ezviz_hp7/issues/35)).
 
 ---
