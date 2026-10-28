@@ -6,7 +6,7 @@ This is a fork of [Bobsilvio/ezviz_hp7](https://github.com/Bobsilvio/ezviz_hp7) 
 
 EZVIZ allows only 10 terminals per account. The original integration derived its terminal ID (featureCode) from the MAC address of the machine. In Docker the container MAC changes with its IP, so every restart or recreate could register a new terminal until the limit was reached and login failed.
 
-This fork generates the ID once and stores it in `/config/.storage/ezviz_hp7_feature_code`. Existing installs adopt the ID they already use, so updating does not add a terminal. The plan is to offer this change to the original project; once it is included there you can switch back to the original repository.
+This fork generates the ID once and stores it in `/config/.storage/ezviz_hp7_feature_code`. Existing installs adopt the ID they already use, so updating does not add a terminal. This repository is maintained on its own and may develop in its own direction, so it can differ from the original project over time.
 
 ## Before you start
 
